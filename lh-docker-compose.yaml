@@ -28,10 +28,16 @@ services:
       LHS_SHOULD_CREATE_TOPICS: "true"
       LHS_HEALTH_SERVICE_PORT: "1822"
       LHS_ADVERTISED_LISTENERS: PLAIN://lh-server:2023
-      LHS_ROCKSDB_TOTAL_MEMTABLE_BYTES: 6442450944
+      LHS_ROCKSDB_TOTAL_MEMTABLE_BYTES: 641728512
       LHS_ROCKSDB_TOTAL_BLOCK_CACHE_BYTES: 268435456
       LHS_NUM_NETWORK_THREADS: "15"
       LHS_CORE_STREAM_THREADS: "7"
+      LHS_STREAMS_METRICS_LEVEL: "DEBUG"
+      LHS_METRICS_LEVEL: "TRACE"
+      KAFKA_LOG_LEVEL: "INFO"
+      LHS_CORE_STREAMS_COMMIT_INTERVAL: "300"
+      LHS_ROCKSDB_COMPACTION_THREADS: "5"
+      LHS_CORE_STATESTORE_CACHE_BYTES: "134217728"
       JAVA_OPTS: "-Dcom.sun.management.jmxremote \
                         -Dcom.sun.management.jmxremote.authenticate=false \
                         -Dcom.sun.management.jmxremote.ssl=false \
@@ -56,7 +62,7 @@ services:
     image: littlehorse/lh-canary
     restart: on-failure
     deploy:
-      replicas: 4
+      replicas: 1
     environment:
       LH_CANARY_METRONOME_ENABLE: false
       LH_CANARY_AGGREGATOR_ENABLE: false
@@ -87,7 +93,7 @@ services:
     image: littlehorse/lh-canary
     restart: on-failure
     deploy:
-      replicas: 7
+      replicas: 1
     environment:
       LH_CANARY_METRONOME_ENABLE: true
       LH_CANARY_AGGREGATOR_ENABLE: false
@@ -105,13 +111,15 @@ services:
   cadvisor:
     image: gcr.io/cadvisor/cadvisor:latest
     container_name: cadvisor
+    platform: linux/aarch64
     ports:
     - 8080:8080
     volumes:
-    - /:/rootfs:ro
-    - /var/run:/var/run:rw
-    - /sys:/sys:ro
-    - /var/lib/docker/:/var/lib/docker:ro
+    - "/:/rootfs:ro"
+    - "/var/run:/var/run:ro"
+    - "/sys:/sys:ro"
+    - "/var/lib/docker/:/var/lib/docker:ro"
+    - "/dev/disk/:/dev/disk:ro"
   prometheus:
     image: prom/prometheus
     container_name: prometheus
@@ -134,7 +142,7 @@ services:
     restart: unless-stopped
     environment:
       - GF_SECURITY_ADMIN_USER=admin
-      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_SECURITY_ADMIN_PASSWORD=grafana
     volumes:
       - ./grafana:/etc/grafana/provisioning/datasources
       - ./dashboard.yaml:/etc/grafana/provisioning/dashboards/main.yaml
