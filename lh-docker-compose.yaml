@@ -16,6 +16,7 @@ services:
       KAFKA_PROCESS_ROLES: broker,controller
       KAFKA_NODE_ID: "1"
       KAFKA_KRAFT_CLUSTER_ID: abcdefghijklmnopqrstuv
+      JAVA_TOOL_OPTIONS: -XX:UseSVE=0
     restart: on-failure
     healthcheck:
       test: /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:9092 --list > /dev/null 2>&1
@@ -28,16 +29,20 @@ services:
       LHS_SHOULD_CREATE_TOPICS: "true"
       LHS_HEALTH_SERVICE_PORT: "1822"
       LHS_ADVERTISED_LISTENERS: PLAIN://lh-server:2023
-      LHS_ROCKSDB_TOTAL_MEMTABLE_BYTES: 641728512
+      LHS_ROCKSDB_TOTAL_MEMTABLE_BYTES: 4096000000
+      LHS_CORE_MEMTABLE_SIZE_BYTES: 1095761920
       LHS_ROCKSDB_TOTAL_BLOCK_CACHE_BYTES: 268435456
       LHS_NUM_NETWORK_THREADS: "15"
-      LHS_CORE_STREAM_THREADS: "7"
+      LHS_CORE_STREAM_THREADS: "4"
       LHS_STREAMS_METRICS_LEVEL: "DEBUG"
       LHS_METRICS_LEVEL: "TRACE"
       KAFKA_LOG_LEVEL: "INFO"
       LHS_CORE_STREAMS_COMMIT_INTERVAL: "300"
       LHS_ROCKSDB_COMPACTION_THREADS: "5"
       LHS_CORE_STATESTORE_CACHE_BYTES: "134217728"
+      LHS_STATE_DIR: "/lh-data"
+      LHS_CLUSTER_PARTITIONS: 12
+      JAVA_TOOL_OPTIONS: -XX:UseSVE=0
       JAVA_OPTS: "-Dcom.sun.management.jmxremote \
                         -Dcom.sun.management.jmxremote.authenticate=false \
                         -Dcom.sun.management.jmxremote.ssl=false \
@@ -58,11 +63,24 @@ services:
       - "2023:2023"
       - "1822:1822"
       - "1099:1099"
+  dashboard:
+    container_name: lh-dashboard
+    image: littlehorse/lh-dashboard
+    environment:
+      LHC_API_HOST: lh-server
+      LHC_API_PORT: 2023
+      LHC_OAUTH_ENABLED: false
+    restart: on-failure
+    ports:
+      - 8081:3000
+    depends_on:
+      littlehorse:
+        condition: service_healthy
   canary-worker:
     image: littlehorse/lh-canary
     restart: on-failure
     deploy:
-      replicas: 1
+      replicas: 3
     environment:
       LH_CANARY_METRONOME_ENABLE: false
       LH_CANARY_AGGREGATOR_ENABLE: false
@@ -70,6 +88,8 @@ services:
       LH_CANARY_LHC_API_HOST: lh-server
       LH_CANARY_LHC_API_PORT: 2023
       LH_CANARY_KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      LOG_LEVEL: WARN
+      JAVA_TOOL_OPTIONS: -XX:UseSVE=0
     depends_on:
       littlehorse:
         condition: service_healthy
@@ -77,49 +97,49 @@ services:
     container_name: lh-canary-aggregator
     image: littlehorse/lh-canary
     restart: on-failure
+    ports:
+      - 2099:2099
     environment:
       LH_CANARY_METRONOME_ENABLE: false
       LH_CANARY_AGGREGATOR_ENABLE: true
-      LH_CANARY_WORKER_ENABLE: false
+      LH_CANARY_METRONOME_WORKER_ENABLE: false
       LH_CANARY_LHC_API_HOST: lh-server
       LH_CANARY_LHC_API_PORT: 2023
       LH_CANARY_KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      LH_CANARY_KAFKA_NUM_STREAM_THREADS: 3
+      JAVA_TOOL_OPTIONS: -XX:UseSVE=0
+      JAVA_OPTS: "-Dcom.sun.management.jmxremote \
+                              -Dcom.sun.management.jmxremote.authenticate=false \
+                              -Dcom.sun.management.jmxremote.ssl=false \
+                              -Dcom.sun.management.jmxremote.port=2099 \
+                              -Dcom.sun.management.jmxremote.rmi.port=2099 \
+                              -Djava.rmi.server.hostname=localhost
+                              -Xms2048m \
+                              -Xmx6144m \
+                              "
     depends_on:
       littlehorse:
         condition: service_healthy
-    ports:
-      - "1922:4023"
   canary-metronome:
     image: littlehorse/lh-canary
     restart: on-failure
     deploy:
-      replicas: 1
+      replicas: 0
     environment:
       LH_CANARY_METRONOME_ENABLE: true
       LH_CANARY_AGGREGATOR_ENABLE: false
-      LH_CANARY_WORKER_ENABLE: false
+      LH_CANARY_METRONOME_WORKER_ENABLE: false
       LH_CANARY_LHC_API_HOST: lh-server
       LH_CANARY_LHC_API_PORT: 2023
       LH_CANARY_KAFKA_BOOTSTRAP_SERVERS: kafka:9092
-      LH_CANARY_METRONOME_RUN_REQUESTS: '1000'
+      LH_CANARY_METRONOME_RUN_REQUESTS: '100'
       LH_CANARY_METRONOME_RUN_THREADS: '20'
       LH_CANARY_METRONOME_RUN_SAMPLE_RATE: '100'
       LH_CANARY_METRONOME_RUN_FREQUENCY_MS: '1000'
+      JAVA_TOOL_OPTIONS: -XX:UseSVE=0
     depends_on:
       littlehorse:
         condition: service_healthy
-  cadvisor:
-    image: gcr.io/cadvisor/cadvisor:latest
-    container_name: cadvisor
-    platform: linux/aarch64
-    ports:
-    - 8080:8080
-    volumes:
-    - "/:/rootfs:ro"
-    - "/var/run:/var/run:ro"
-    - "/sys:/sys:ro"
-    - "/var/lib/docker/:/var/lib/docker:ro"
-    - "/dev/disk/:/dev/disk:ro"
   prometheus:
     image: prom/prometheus
     container_name: prometheus
@@ -132,8 +152,6 @@ services:
       - ./prometheus:/etc/prometheus
     extra_hosts:
       - "host.docker.internal:host-gateway"
-    depends_on:
-    - cadvisor
   grafana:
     image: grafana/grafana
     container_name: grafana
@@ -149,3 +167,5 @@ services:
       - ./dashboards:/var/lib/grafana/dashboards
     depends_on:
     - prometheus
+  kaskade:
+    image: sauljabin/kaskade:3.0.0

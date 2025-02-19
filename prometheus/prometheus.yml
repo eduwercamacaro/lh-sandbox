@@ -19,11 +19,6 @@ scrape_configs:
   static_configs:
   - targets:
     - canary-aggregator:4023
-- job_name: cadvisor
-  scrape_interval: 1s
-  static_configs:
-  - targets:
-    - cadvisor:8080
 - job_name: lh-server
   scrape_interval: 1s
   static_configs:
