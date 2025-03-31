@@ -3,9 +3,9 @@ services:
     container_name: lh-kafka
     image: apache/kafka:3.9.0
     environment:
-      KAFKA_LISTENERS: CONTROLLER://:29092,EXTERNAL://:19092,INTERNAL://:9092
-      KAFKA_ADVERTISED_LISTENERS: EXTERNAL://localhost:19092,INTERNAL://kafka:9092
-      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,EXTERNAL:PLAINTEXT,INTERNAL:PLAINTEXT
+      KAFKA_LISTENERS: CONTROLLER://:29092,EXTERNAL://:19092,INTERNAL://:9092,PROXY://:19093
+      KAFKA_ADVERTISED_LISTENERS: EXTERNAL://localhost:19092,INTERNAL://kafka:9092,PROXY://nginx:19093
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,EXTERNAL:PLAINTEXT,INTERNAL:PLAINTEXT,PROXY:PLAINTEXT
       KAFKA_INTER_BROKER_LISTENER_NAME: INTERNAL
       KAFKA_BROKER_ID: "1"
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: "1"
@@ -23,7 +23,7 @@ services:
       interval: 5s
   littlehorse:
     container_name: lh-server
-    image: littlehorse/lh-server
+    image: ghcr.io/littlehorse-enterprises/littlehorse/lh-server:0.13.1
     environment:
       LHS_KAFKA_BOOTSTRAP_SERVERS: kafka:9092
       LHS_SHOULD_CREATE_TOPICS: "true"
@@ -65,7 +65,7 @@ services:
       - "1099:1099"
   dashboard:
     container_name: lh-dashboard
-    image: littlehorse/lh-dashboard
+    image: ghcr.io/littlehorse-enterprises/littlehorse/lh-dashboard:0.13.1
     environment:
       LHC_API_HOST: lh-server
       LHC_API_PORT: 2023
@@ -77,10 +77,10 @@ services:
       littlehorse:
         condition: service_healthy
   canary-worker:
-    image: littlehorse/lh-canary
+    image: ghcr.io/littlehorse-enterprises/littlehorse/lh-canary:0.13.1
     restart: on-failure
     deploy:
-      replicas: 3
+      replicas: 5
     environment:
       LH_CANARY_METRONOME_ENABLE: false
       LH_CANARY_AGGREGATOR_ENABLE: false
@@ -95,7 +95,7 @@ services:
         condition: service_healthy
   canary-aggregator:
     container_name: lh-canary-aggregator
-    image: littlehorse/lh-canary
+    image: ghcr.io/littlehorse-enterprises/littlehorse/lh-canary:0.13.1
     restart: on-failure
     ports:
       - 2099:2099
@@ -121,10 +121,10 @@ services:
       littlehorse:
         condition: service_healthy
   canary-metronome:
-    image: littlehorse/lh-canary
+    image: ghcr.io/littlehorse-enterprises/littlehorse/lh-canary:0.13.1
     restart: on-failure
     deploy:
-      replicas: 0
+      replicas: 2
     environment:
       LH_CANARY_METRONOME_ENABLE: true
       LH_CANARY_AGGREGATOR_ENABLE: false
@@ -132,7 +132,7 @@ services:
       LH_CANARY_LHC_API_HOST: lh-server
       LH_CANARY_LHC_API_PORT: 2023
       LH_CANARY_KAFKA_BOOTSTRAP_SERVERS: kafka:9092
-      LH_CANARY_METRONOME_RUN_REQUESTS: '100'
+      LH_CANARY_METRONOME_RUN_REQUESTS: '300'
       LH_CANARY_METRONOME_RUN_THREADS: '20'
       LH_CANARY_METRONOME_RUN_SAMPLE_RATE: '100'
       LH_CANARY_METRONOME_RUN_FREQUENCY_MS: '1000'
@@ -169,3 +169,14 @@ services:
     - prometheus
   kaskade:
     image: sauljabin/kaskade:3.0.0
+  nginx:
+    image: kafka-nginx
+    build: ./nginx
+    depends_on:
+      - kafka
+    cap_add:
+      - NET_ADMIN
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+    ports:
+      - "19093:19093"
